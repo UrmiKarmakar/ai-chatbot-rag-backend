@@ -20,13 +20,13 @@ I implemented a RAG (Retrieval-Augmented Generation) pipeline using FAISS for ve
 
 ### 2. What database and model structure did you use for storing user and chat history, and why did you choose this approach?
 
-I used PostgreSQL with Django ORM for structured and scalable data storage. The `User` model handles authentication, while `ChatSession` tracks individual conversations and `ChatMessage` stores each message with a role (`user` or `assistant`). This structure supports multi-turn conversations, efficient querying, and future expansion such as analytics or tagging. It also ensures clean separation between sessions and messages for better maintainability.
+I used SQLite with Django ORM for lightweight and file-based data storage during development. The User model handles authentication, while ChatSession tracks individual conversations and ChatMessage stores each message with a role (user or assistant). This structure supports multi-turn conversations, efficient querying, and future expansion such as analytics or tagging. SQLite is ideal for rapid prototyping and local testing, and the model design ensures clean separation between sessions and messages for maintainability and scalability.
 
 ---
 
 ### 3. How did you implement user authentication using JWT? What security measures did you take for handling passwords and tokens?
 
-I used `djangorestframework-simplejwt` to implement JWT-based authentication. During registration, passwords are securely hashed using Django’s default PBKDF2 algorithm. Upon login, users receive access and refresh tokens, which are stored client-side and used to authenticate protected endpoints. Sensitive data such as secret keys and API tokens are stored in environment variables and never exposed in the codebase. All authentication flows are validated with proper error handling and input sanitization.
+I used `djangorestframework-simplejwt` to implement JWT-based authentication. During registration, passwords are securely hashed using Django’s default PBKDF2 algorithm. Upon login, users receive access and refresh tokens, which are stored client-side and used to authenticate protected endpoints. Sensitive data, such as secret keys and API tokens, is stored in environment variables and never exposed in the codebase. All authentication flows are validated with proper error handling and input sanitization.
 
 ---
 
@@ -44,7 +44,7 @@ I used APScheduler to schedule background tasks. A daily job runs automatically 
 
 ### 6. What testing strategies did you use to ensure the functionality of the chatbot, authentication, and background tasks?
 
-I used a combination of unit and integration testing. Unit tests cover core services such as document retrieval, AI response generation, and authentication logic. Integration tests validate full user flows including registration, login, chat interaction, and history retrieval. I manually tested all endpoints using Postman and PowerShell to confirm real-world behavior before automating. Background tasks were tested with mock data and scheduled runs to ensure reliability.
+I used a combination of unit and integration testing. Unit tests cover core services such as document retrieval, AI response generation, and authentication logic. Integration tests validate full user flows, including registration, login, chat interaction, and history retrieval. I manually tested all endpoints using Postman and PowerShell to confirm real-world behavior before automating. Background tasks were tested with mock data and scheduled runs to ensure reliability.
 
 ---
 
