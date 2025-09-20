@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     # Local apps
     "users",
     "chat.apps.ChatConfig",
+    "core.apps.CoreConfig",
     "documents",
 ]
 

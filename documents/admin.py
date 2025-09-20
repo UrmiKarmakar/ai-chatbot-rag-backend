@@ -3,7 +3,6 @@ from .models import Document
 
 @admin.register(Document)
 class DocumentAdmin(admin.ModelAdmin):
-    list_display = ("title", "type", "category", "is_active")  # removed created_at
-    search_fields = ("title", "content", "tags")
-    list_filter = ("type", "category", "is_active")
-
+    list_display = ["title", "doc_type", "is_active", "updated_at"]
+    list_filter = ["doc_type", "is_active", "category"]
+    search_fields = ["title", "content", "category", "tags"]

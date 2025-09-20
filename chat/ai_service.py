@@ -1,8 +1,8 @@
-import os
 import time
 import logging
 from typing import List, Dict
 import google.generativeai as genai
+from decouple import config
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +14,7 @@ class AIService:
     """
 
     def __init__(self, model_name: str = None):
-        api_key = os.getenv("GEMINI_API_KEY")
+        api_key = config("GEMINI_API_KEY", default="")
         if not api_key:
             logger.error("GEMINI_API_KEY not set — AIService disabled.")
             self.model = None
@@ -23,9 +23,9 @@ class AIService:
         genai.configure(api_key=api_key)
 
         # Choose fast or deep model based on env or default
-        self.model_name = model_name or os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
-        self.temperature = float(os.getenv("GEMINI_TEMPERATURE", "0.7"))
-        self.max_tokens = int(os.getenv("GEMINI_MAX_TOKENS", "512"))
+        self.model_name = model_name or config("GEMINI_MODEL", default="gemini-2.5-flash")
+        self.temperature = float(config("GEMINI_TEMPERATURE", default="0.7"))
+        self.max_tokens = int(config("GEMINI_MAX_TOKENS", default="512"))
 
         self.model = genai.GenerativeModel(self.model_name)
 
