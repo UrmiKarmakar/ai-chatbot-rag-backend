@@ -1,7 +1,7 @@
 # chat/services.py
 import time
 import logging
-from typing import List, Dict
+from typing import List, Dict, Optional
 from documents.models import Document
 from .vector_store import vector_db
 from .ai_services import ai_service
@@ -10,14 +10,21 @@ logger = logging.getLogger(__name__)
 
 
 class AdvancedRAGService:
-    """Advanced RAG service with Gemini AI and vector search."""
+    """
+    Advanced Retrieval-Augmented Generation (RAG) service.
+    Handles:
+      - Loading documents into the vector store
+      - Retrieving relevant chunks
+      - Building optimized context
+      - Passing query + context + history to Gemini
+    """
 
     def __init__(self, preload: bool = False):
-        # Index is already initialized in ChatConfig.ready()
+        # Vector index is initialized in ChatConfig.ready()
         if preload:
             self.load_documents_to_vector_db()
 
-    def load_documents_to_vector_db(self):
+    def load_documents_to_vector_db(self) -> None:
         """Load all active documents from DB into vector store (skip existing)."""
         documents = Document.objects.filter(is_active=True).only(
             "id", "title", "content", "doc_type", "category", "tags"
@@ -25,6 +32,8 @@ class AdvancedRAGService:
         vector_docs = []
 
         for doc in documents:
+            if not doc.content:
+                continue  # skip empty docs
             doc_id = f"doc_{doc.id}"
             if not vector_db.document_exists(doc_id):
                 vector_docs.append({
@@ -42,22 +51,26 @@ class AdvancedRAGService:
             logger.info("Added %s new documents to vector DB", len(vector_docs))
 
     def retrieve_relevant_documents(self, query: str, top_k: int = 3) -> List[Dict]:
+        """Search vector DB for top_k relevant documents."""
         if not query.strip():
             return []
         return vector_db.search(query, top_k)
 
     def build_gemini_optimized_context(self, documents: List[Dict]) -> str:
+        """Format retrieved documents into a context string for Gemini."""
         if not documents:
             return "No relevant documents found in the knowledge base."
+
         parts = ["Knowledge Base Context:"]
         for i, result in enumerate(documents, 1):
-            doc = result["document"]
+            doc = result.get("document", {})
             parts.append(f"\nDocument {i}: {doc.get('title', 'No title')}")
             if doc.get("doc_type"):
                 parts.append(f"Type: {doc.get('doc_type')}")
             if doc.get("category"):
                 parts.append(f"Category: {doc.get('category')}")
-            parts.append(f"Content: {doc.get('content', '')}")
+            snippet = doc.get("content", "")
+            parts.append(f"Content: {snippet}")
         parts.append(
             "\nInstructions: Use only the provided context. "
             "If the answer is not in the context, say you don't know."
@@ -65,6 +78,7 @@ class AdvancedRAGService:
         return "\n".join(parts)
 
     def get_conversation_history(self, session_id: int, limit: int = 5) -> List[Dict]:
+        """Fetch last N messages for a given chat session."""
         from .models import ChatMessage
         messages = (
             ChatMessage.objects.filter(session_id=session_id)
@@ -73,7 +87,11 @@ class AdvancedRAGService:
         )
         return [{"role": m.role, "content": m.content} for m in reversed(messages)]
 
-    def process_query(self, query: str, session_id: int = None) -> Dict:
+    def process_query(self, query: str, session_id: Optional[int] = None) -> Dict:
+        """
+        Main entrypoint: process a user query with RAG + Gemini.
+        Returns a dict with response, context, metadata.
+        """
         start_time = time.time()
 
         relevant = self.retrieve_relevant_documents(query)
@@ -93,7 +111,7 @@ class AdvancedRAGService:
 
         return {
             "response": response,
-            "relevant_documents": [r["document"] for r in relevant],
+            "relevant_documents": [r.get("document", {}) for r in relevant],
             "latency": round(latency, 3),
             "documents_count": len(relevant),
             "context_used": context[:500] + "..." if len(context) > 500 else context,
@@ -101,5 +119,5 @@ class AdvancedRAGService:
         }
 
 
-# Singleton instance
+# Singleton instance for reuse
 rag_service = AdvancedRAGService()

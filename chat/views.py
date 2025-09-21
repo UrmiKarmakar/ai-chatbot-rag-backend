@@ -49,8 +49,14 @@ class ChatView(APIView):
     def post(self, request, *args, **kwargs):
         serializer = ChatRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        user_message = serializer.validated_data["message"]
+        user_message = serializer.validated_data["message"].strip()
         session_id = serializer.validated_data.get("session_id")
+
+        if not user_message:
+            return Response(
+                {"error": "Message cannot be empty."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         # Get or create session
         if session_id:

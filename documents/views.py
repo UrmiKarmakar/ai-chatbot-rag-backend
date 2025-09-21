@@ -1,8 +1,11 @@
 # documents/views.py
+import logging
 from rest_framework import viewsets, permissions, filters
 from .models import Document
 from .serializers import DocumentSerializer
-from chat.ingestion import ingest_document  # import ingestion function
+from chat.ingestion import ingest_document
+
+logger = logging.getLogger(__name__)
 
 
 class DocumentViewSet(viewsets.ModelViewSet):
@@ -43,13 +46,20 @@ class DocumentViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         """
         Save document and ingest into FAISS for retrieval.
+        Ensures content is extracted before ingestion.
         """
         doc = serializer.save(uploaded_by=self.request.user)
-        ingest_document(doc)
+        if not doc.content and doc.file:
+            doc.save()  # triggers extraction in models.py
+        success = ingest_document(doc)
+        logger.info("Document %s ingested: %s", doc.id, success)
 
     def perform_update(self, serializer):
         """
         Update document and re-ingest into FAISS.
         """
         doc = serializer.save()
-        ingest_document(doc)
+        if not doc.content and doc.file:
+            doc.save()  # ensure content extracted
+        success = ingest_document(doc)
+        logger.info("Document %s re-ingested: %s", doc.id, success)
