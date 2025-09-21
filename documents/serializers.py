@@ -26,7 +26,7 @@ class DocumentSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["id", "uploaded_by", "created_at", "updated_at"]
 
-    # --- Field-level validations ---
+    # Field-level validations
     def validate_title(self, value):
         if not value or not value.strip():
             raise serializers.ValidationError("Title cannot be empty.")
