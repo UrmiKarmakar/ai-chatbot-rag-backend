@@ -1,21 +1,23 @@
 # API Endpoints for ai-chatbot-rag-backend
 
 ## Authentication
-POST   /api/users/register/        → Register a new user
-POST   /api/users/login/           → Obtain JWT token
-POST   /api/users/logout/          → Logout (invalidate token)
-GET    /api/users/me/              → Get current user profile
+POST   /api/auth/signup/               → Register a new user
+POST   /api/auth/login/                → Obtain JWT token
+GET    /api/auth/profile/              → Get current user profile
+POST   /api/token/refresh/             → Refresh JWT token
 
 ## Chat
-POST   /api/chat/                  → Send a query to the chatbot
-GET    /api/chat/history/<session_id>/   → Retrieve chat history for a session
+POST   /api/chat/send/                 → Send a query to the chatbot
+GET    /api/chat/history/              → List all chat sessions for the user
+GET    /api/chat/history/<session_id>/ → Retrieve chat history for a specific session
 
 ## Documents
-GET    /api/documents/             → List all documents
-POST   /api/documents/             → Upload/create a new document
-GET    /api/documents/<id>/        → Retrieve a single document
-PUT    /api/documents/<id>/        → Update a document
-DELETE /api/documents/<id>/        → Delete a document
+GET    /api/documents/                 → List all documents
+POST   /api/documents/                 → Upload/create a new document
+GET    /api/documents/<id>/            → Retrieve a single document
+PUT    /api/documents/<id>/            → Update a document
+DELETE /api/documents/<id>/            → Delete a document
 
 ## Admin / Utility
-GET    /admin/                     → Django admin panel
+GET    /admin/                         → Django admin panel
+GET    /api-auth/                      → DRF browsable API login/logout
