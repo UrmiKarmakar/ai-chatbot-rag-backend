@@ -1,6 +1,8 @@
+# documents/views.py
 from rest_framework import viewsets, permissions, filters
 from .models import Document
 from .serializers import DocumentSerializer
+from chat.ingestion import ingest_document  # import ingestion function
 
 
 class DocumentViewSet(viewsets.ModelViewSet):
@@ -37,3 +39,17 @@ class DocumentViewSet(viewsets.ModelViewSet):
                 queryset = queryset.filter(tags__contains=tag)
 
         return queryset
+
+    def perform_create(self, serializer):
+        """
+        Save document and ingest into FAISS for retrieval.
+        """
+        doc = serializer.save(uploaded_by=self.request.user)
+        ingest_document(doc)
+
+    def perform_update(self, serializer):
+        """
+        Update document and re-ingest into FAISS.
+        """
+        doc = serializer.save()
+        ingest_document(doc)

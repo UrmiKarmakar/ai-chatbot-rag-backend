@@ -1,3 +1,4 @@
+# core/scheduler.py
 import logging
 from datetime import timedelta
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -6,7 +7,7 @@ from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
-# Global scheduler instance
+# Global scheduler instance (shared across project)
 scheduler = BackgroundScheduler(timezone=str(timezone.get_current_timezone()))
 
 
@@ -21,17 +22,44 @@ def cleanup_old_chats():
         days = getattr(settings, "CHAT_RETENTION_DAYS", 30)
         cutoff = timezone.now() - timedelta(days=days)
 
-        deleted, _ = ChatMessage.objects.filter(created_at__lt=cutoff).delete()
-        ChatSession.objects.filter(messages__isnull=True).delete()
+        deleted_messages, _ = ChatMessage.objects.filter(created_at__lt=cutoff).delete()
+        deleted_sessions, _ = ChatSession.objects.filter(messages__isnull=True).delete()
 
-        logger.info("Cleanup job: deleted %s old messages", deleted)
+        logger.info(
+            "Cleanup job: deleted %s old messages and %s empty sessions",
+            deleted_messages,
+            deleted_sessions,
+        )
     except Exception as e:
         logger.error("Cleanup job failed: %s", e)
 
 
+def send_verification_email(user):
+    """
+    Sends a verification email to a newly registered user.
+    This should be scheduled as a one-off job after signup.
+    """
+    from django.core.mail import send_mail
+
+    try:
+        subject = "Verify your account"
+        # In production, replace with a signed token or JWT for security
+        verification_link = f"{settings.FRONTEND_URL}/verify/{user.id}/"
+        message = (
+            f"Hi {user.username},\n\n"
+            f"Please verify your account by clicking the link below:\n{verification_link}\n\n"
+            "If you did not sign up, please ignore this email."
+        )
+
+        send_mail(subject, message, settings.DEFAULT_FROM_EMAIL, [user.email])
+        logger.info("Verification email sent to %s", user.email)
+    except Exception as e:
+        logger.error("Failed to send verification email to %s: %s", user.email, e)
+
+
 def start_scheduler():
     """
-    Start the APScheduler with all jobs.
+    Start the APScheduler with all recurring jobs.
     """
     if scheduler.running:
         return

@@ -1,22 +1,19 @@
+# chat/rag.py
 """
-chat/rag.py
 Implements the RAG pipeline: retrieve relevant docs + generate AI response.
 """
 
 import logging
-from typing import Dict
-from .vector_store import vector_db
-from .ai_service import ai_service
+from typing import Dict, Optional
 from .services import AdvancedRAGService
 
 logger = logging.getLogger(__name__)
 
-# You can either use AdvancedRAGService directly,
-# or keep rag_pipeline() as a thin wrapper for convenience.
+# Initialize the RAG service (without preloading by default)
 rag_service = AdvancedRAGService(preload=False)
 
 
-def rag_pipeline(query: str, session_id: int | None = None) -> Dict:
+def rag_pipeline(query: str, session_id: Optional[int] = None) -> Dict:
     """
     Full RAG pipeline: retrieve relevant docs + generate AI response.
     
@@ -47,7 +44,7 @@ def rag_pipeline(query: str, session_id: int | None = None) -> Dict:
     try:
         return rag_service.process_query(query, session_id=session_id)
     except Exception as e:
-        logger.exception("RAG pipeline failed for query='%s'", query)
+        logger.exception("RAG pipeline failed for query='%s'", query, exc_info=True)
         return {
             "response": "Sorry, I had trouble processing your request.",
             "relevant_documents": [],

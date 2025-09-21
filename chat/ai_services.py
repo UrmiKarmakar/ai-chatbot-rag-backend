@@ -1,3 +1,4 @@
+# chat/ai_services.py
 import time
 import logging
 from typing import List, Dict
@@ -10,7 +11,7 @@ logger = logging.getLogger(__name__)
 class AIService:
     """
     Gemini wrapper for chat-style generation with RAG context.
-    Expects history as [{"role": "user"/"assistant"/"system", "content": "..."}].
+    Expects history as [{"role": "user"/"assistant", "content": "..."}].
     """
 
     def __init__(self, model_name: str = None):
@@ -22,7 +23,6 @@ class AIService:
 
         genai.configure(api_key=api_key)
 
-        # Choose fast or deep model based on env or default
         self.model_name = model_name or config("GEMINI_MODEL", default="gemini-2.5-flash")
         self.temperature = float(config("GEMINI_TEMPERATURE", default="0.7"))
         self.max_tokens = int(config("GEMINI_MAX_TOKENS", default="512"))
@@ -31,7 +31,7 @@ class AIService:
 
     def generate_response(self, query: str, context: str, history: List[Dict]) -> str:
         """
-        Build messages with a system-like first message containing RAG context,
+        Build messages with a strong system instruction containing RAG context,
         followed by history, then the user message.
         """
         if not self.model:
@@ -40,7 +40,14 @@ class AIService:
         messages = []
 
         if context:
-            messages.append({"role": "system", "parts": [context]})
+            system_prompt = (
+                "You are a helpful assistant for an e-commerce chatbot.\n"
+                "Use only the following context to answer the user's question.\n"
+                "If the answer is not in the context, say politely that you don't know.\n"
+                "Do not invent information. Be concise, clear, and professional.\n\n"
+                f"Context:\n{context}"
+            )
+            messages.append({"role": "system", "parts": [system_prompt]})
 
         for msg in history:
             role = msg.get("role", "user")
@@ -50,7 +57,6 @@ class AIService:
 
         messages.append({"role": "user", "parts": [query]})
 
-        # Retry loop for resilience
         for attempt in range(3):
             try:
                 resp = self.model.generate_content(

@@ -1,78 +1,77 @@
 """
-Handles ingestion of documents into the retrieval system (FAISS, Pinecone, etc.)
+Handles ingestion of documents into the retrieval system (FAISS).
 """
 import logging
-from typing import Dict, List
-from .vector_store import vector_db
+from typing import List
+from .vector_store import vector_db  # use the singleton instance
 
 logger = logging.getLogger(__name__)
 
 
-def ingest_document(content: str, metadata: Dict = None) -> bool:
+def ingest_document(document) -> bool:
     """
-    Ingest a single document into the retrieval system (FAISS).
-    
+    Ingest a single Document model instance into FAISS.
+
     Args:
-        content (str): The raw text of the document.
-        metadata (dict): Optional metadata (id, title, type, category, tags, etc.)
-    
+        document (Document): Django Document instance
+
     Returns:
-        bool: True if ingestion succeeded, False otherwise.
+        bool: True if ingestion succeeded, False otherwise
     """
-    if not content.strip():
-        logger.warning("Skipping ingestion: empty content")
+    if not document or not document.content or not document.content.strip():
+        logger.warning("Skipping ingestion: empty or invalid document")
         return False
 
-    doc_id = metadata.get("id") if metadata else None
-    if not doc_id:
-        # Generate a unique ID if not provided
-        import uuid
-        doc_id = f"doc_{uuid.uuid4().hex}"
+    # Split content into chunks (simple fixed-size)
+    chunks = [document.content[i:i+500] for i in range(0, len(document.content), 500)]
 
-    document = {
-        "id": doc_id,
-        "title": metadata.get("title") if metadata else "Untitled",
-        "content": content,
-        "type": metadata.get("type") if metadata else None,
-        "category": metadata.get("category") if metadata else None,
-        "tags": metadata.get("tags") if metadata else [],
-        "source": metadata.get("source") if metadata else "manual_ingest",
-    }
+    docs = []
+    for idx, chunk in enumerate(chunks, start=1):
+        docs.append({
+            "id": f"{document.id}_{idx}",
+            "title": document.title,
+            "doc_type": getattr(document, "doc_type", None),
+            "category": getattr(document, "category", None),
+            "tags": getattr(document, "tags", []),
+            "content": chunk,
+            "source": "database",
+        })
 
-    success = vector_db.add_documents([document])
+    success = vector_db.add_documents(docs)
+
     if success:
-        logger.info("Ingested document: %s (%s chars)", document["id"], len(content))
+        logger.info("Ingested document %s (%d chunks)", document.id, len(chunks))
     else:
-        logger.error("Failed to ingest document: %s", document["id"])
+        logger.error("Failed to ingest document %s", document.id)
+
     return success
 
 
-def ingest_documents_bulk(docs: List[Dict]) -> bool:
+def ingest_documents_bulk(documents: List) -> bool:
     """
-    Ingest multiple documents at once.
-    
+    Ingest multiple Document model instances at once.
+
     Args:
-        docs (List[Dict]): Each dict should have {"content": str, "metadata": dict}
-    
+        documents (List[Document]): List of Document instances
+
     Returns:
-        bool: True if all ingested successfully, False otherwise.
+        bool: True if all ingested successfully, False otherwise
     """
     prepared = []
-    for d in docs:
-        content = d.get("content", "")
-        metadata = d.get("metadata", {})
-        if not content.strip():
+    for doc in documents:
+        if not doc.content or not doc.content.strip():
             continue
-        doc_id = metadata.get("id") or f"doc_{len(prepared)}"
-        prepared.append({
-            "id": doc_id,
-            "title": metadata.get("title", "Untitled"),
-            "content": content,
-            "type": metadata.get("type"),
-            "category": metadata.get("category"),
-            "tags": metadata.get("tags", []),
-            "source": metadata.get("source", "bulk_ingest"),
-        })
+        chunks = [doc.content[i:i+500] for i in range(0, len(doc.content), 500)]
+        for idx, chunk in enumerate(chunks, start=1):
+            prepared.append({
+                "id": f"{doc.id}_{idx}",
+                "title": doc.title,
+                "doc_type": getattr(doc, "doc_type", None),
+                "category": getattr(doc, "category", None),
+                "tags": getattr(doc, "tags", []),
+                "content": chunk,
+                "source": "database",
+            })
 
     if not prepared:
         logger.warning("No valid documents to ingest")

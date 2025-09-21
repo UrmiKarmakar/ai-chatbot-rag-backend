@@ -1,9 +1,10 @@
+# chat/services.py
 import time
 import logging
 from typing import List, Dict
 from documents.models import Document
 from .vector_store import vector_db
-from .ai_service import ai_service
+from .ai_services import ai_service
 
 logger = logging.getLogger(__name__)
 
@@ -12,14 +13,14 @@ class AdvancedRAGService:
     """Advanced RAG service with Gemini AI and vector search."""
 
     def __init__(self, preload: bool = False):
-        vector_db.initialize_index()
+        # Index is already initialized in ChatConfig.ready()
         if preload:
             self.load_documents_to_vector_db()
 
     def load_documents_to_vector_db(self):
         """Load all active documents from DB into vector store (skip existing)."""
         documents = Document.objects.filter(is_active=True).only(
-            "id", "title", "content", "type", "category", "tags"
+            "id", "title", "content", "doc_type", "category", "tags"
         )
         vector_docs = []
 
@@ -30,9 +31,9 @@ class AdvancedRAGService:
                     "id": doc_id,
                     "title": doc.title,
                     "content": doc.content,
-                    "type": getattr(doc, "type", "Unknown"),
+                    "doc_type": getattr(doc, "doc_type", "Unknown"),
                     "category": getattr(doc, "category", None),
-                    "tags": getattr(doc, "tags", None),
+                    "tags": getattr(doc, "tags", []),
                     "source": "database",
                 })
 
@@ -48,16 +49,19 @@ class AdvancedRAGService:
     def build_gemini_optimized_context(self, documents: List[Dict]) -> str:
         if not documents:
             return "No relevant documents found in the knowledge base."
-        parts = ["KNOWLEDGE BASE CONTEXT:"]
+        parts = ["Knowledge Base Context:"]
         for i, result in enumerate(documents, 1):
             doc = result["document"]
-            parts.append(f"\n--- Document {i}: {doc.get('title', 'No title')} ---")
-            if doc.get("type"):
-                parts.append(f"Type: {doc.get('type')}")
+            parts.append(f"\nDocument {i}: {doc.get('title', 'No title')}")
+            if doc.get("doc_type"):
+                parts.append(f"Type: {doc.get('doc_type')}")
             if doc.get("category"):
                 parts.append(f"Category: {doc.get('category')}")
             parts.append(f"Content: {doc.get('content', '')}")
-        parts.append("\nInstructions: Use only the provided context. If unsure, say you don't know.")
+        parts.append(
+            "\nInstructions: Use only the provided context. "
+            "If the answer is not in the context, say you don't know."
+        )
         return "\n".join(parts)
 
     def get_conversation_history(self, session_id: int, limit: int = 5) -> List[Dict]:
@@ -72,31 +76,30 @@ class AdvancedRAGService:
     def process_query(self, query: str, session_id: int = None) -> Dict:
         start_time = time.time()
 
-        # Retrieval
         relevant = self.retrieve_relevant_documents(query)
-
-        # Context
         context = self.build_gemini_optimized_context(relevant)
-
-        # History
         history = self.get_conversation_history(session_id) if session_id else []
 
-        # Generation
         try:
             response = ai_service.generate_response(query, context, history)
+            success = True
         except Exception as e:
             logger.error("AI generation failed: %s", e, exc_info=True)
             response = "Sorry, I couldn’t generate a response this time."
+            success = False
 
         latency = time.time() - start_time
+        logger.info("Processed query in %.3fs (success=%s)", latency, success)
+
         return {
             "response": response,
             "relevant_documents": [r["document"] for r in relevant],
             "latency": round(latency, 3),
             "documents_count": len(relevant),
             "context_used": context[:500] + "..." if len(context) > 500 else context,
-            "success": True,
+            "success": success,
         }
 
 
+# Singleton instance
 rag_service = AdvancedRAGService()

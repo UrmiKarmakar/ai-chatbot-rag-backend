@@ -1,3 +1,4 @@
+# chat/vector_store.py
 import os
 import json
 import faiss
@@ -10,14 +11,13 @@ from sentence_transformers import SentenceTransformer
 logger = logging.getLogger(__name__)
 
 
-class VectorDB:
+class VectorStore:
     """
-    FAISS wrapper with a persisted docstore.
+    FAISS-based vector database with persistent docstore.
     - Embeddings: all-MiniLM-L6-v2 (384-dim)
     - Persists:
         - FAISS index to FAISS_INDEX_PATH
         - Doc metadata mapping to DOCSTORE_PATH
-    - Rebuilds the index deterministically from docstore on init to ensure alignment.
     """
 
     def __init__(
@@ -28,8 +28,9 @@ class VectorDB:
         docstore_path: str = None,
     ):
         self.model_name = model_name
-        self._embedder = None  # lazy init
         self.dim = dim
+        self._embedder = None  # lazy init
+
         self.index_path = index_path or getattr(settings, "FAISS_INDEX_PATH", "faiss.index")
         self.docstore_path = docstore_path or getattr(settings, "DOCSTORE_PATH", "docstore.json")
 
@@ -37,12 +38,23 @@ class VectorDB:
         self.doc_store: Dict[str, Dict] = {}
         self.doc_order: List[str] = []
 
+        # Initialize from persisted files if available
+        self._load_docstore()
+        self._rebuild_index()
+
+    # --- Embedding ---
     @property
     def embedder(self):
         if self._embedder is None:
+            logger.info("Loading embedding model: %s", self.model_name)
             self._embedder = SentenceTransformer(self.model_name)
         return self._embedder
 
+    def _embed_batch(self, texts: List[str]) -> np.ndarray:
+        vecs = self.embedder.encode(texts, convert_to_numpy=True, normalize_embeddings=True)
+        return vecs.astype("float32")
+
+    # --- Persistence ---
     def _ensure_dir(self, path: str):
         directory = os.path.dirname(path)
         if directory:
@@ -59,6 +71,7 @@ class VectorDB:
                 data = json.load(f)
                 self.doc_order = data.get("order", [])
                 self.doc_store = data.get("docs", {})
+            logger.info("Loaded docstore with %d documents", len(self.doc_order))
         else:
             self.doc_order = []
             self.doc_store = {}
@@ -67,31 +80,39 @@ class VectorDB:
         self._ensure_dir(self.index_path)
         faiss.write_index(self.index, self.index_path)
 
-    def _embed_batch(self, texts: List[str]) -> np.ndarray:
-        vecs = self.embedder.encode(texts, convert_to_numpy=True, normalize_embeddings=True)
-        return vecs.astype("float32")
+    def _rebuild_index(self):
+        """Rebuild FAISS index from docstore to ensure alignment."""
+        self.index = faiss.IndexFlatL2(self.dim)
+        if self.doc_order:
+            contents = [self.doc_store[doc_id]["content"] for doc_id in self.doc_order if doc_id in self.doc_store]
+            if contents:
+                embeddings = self._embed_batch(contents)
+                self.index.add(embeddings)
+        self._save_index()
 
+    # --- Public lifecycle ---
     def initialize_index(self):
+        """
+        Ensure the FAISS index and docstore are loaded and aligned.
+        Called at app startup (ChatConfig.ready()).
+        """
         try:
             self._load_docstore()
-            self.index = faiss.IndexFlatL2(self.dim)
-
-            if self.doc_order:
-                contents = [self.doc_store[doc_id]["content"] for doc_id in self.doc_order if doc_id in self.doc_store]
-                if contents:
-                    embeddings = self._embed_batch(contents)
-                    self.index.add(embeddings)
-
-            self._save_index()
-            logger.info("VectorDB initialized. Docs: %d", len(self.doc_order))
+            self._rebuild_index()
+            logger.info("VectorStore initialized with %d documents", len(self.doc_order))
         except Exception:
-            logger.exception("Failed to initialize VectorDB")
-            raise
+            logger.exception("Failed to initialize VectorStore")
 
+    # --- Document Operations ---
     def document_exists(self, doc_id: str) -> bool:
+        """Check if a document ID already exists in the store."""
         return doc_id in self.doc_store
 
     def add_documents(self, docs: List[Dict]) -> bool:
+        """
+        Add new documents to the vector store.
+        Each doc must have: {"id", "title", "content", ...}
+        """
         try:
             new_docs = [d for d in docs if d["id"] not in self.doc_store]
             if not new_docs:
@@ -102,7 +123,6 @@ class VectorDB:
             self.index.add(embeddings)
 
             for d in new_docs:
-                d.setdefault("created_at", str(os.path.getmtime(self.docstore_path)) if os.path.exists(self.docstore_path) else None)
                 self.doc_store[d["id"]] = d
                 self.doc_order.append(d["id"])
 
@@ -115,19 +135,16 @@ class VectorDB:
             return False
 
     def upsert_documents(self, docs: List[Dict]) -> bool:
+        """
+        Insert or update documents.
+        """
         try:
             for d in docs:
                 if d["id"] not in self.doc_store:
                     self.doc_order.append(d["id"])
                 self.doc_store[d["id"]] = d
 
-            self.index = faiss.IndexFlatL2(self.dim)
-            contents = [self.doc_store[i]["content"] for i in self.doc_order]
-            if contents:
-                embeddings = self._embed_batch(contents)
-                self.index.add(embeddings)
-
-            self._save_index()
+            self._rebuild_index()
             self._save_docstore()
             logger.info("Upserted %d documents", len(docs))
             return True
@@ -136,13 +153,20 @@ class VectorDB:
             return False
 
     def reset(self):
+        """Clear all documents and reset index."""
         self.index = faiss.IndexFlatL2(self.dim)
         self.doc_store = {}
         self.doc_order = []
         self._save_index()
         self._save_docstore()
+        logger.info("Vector store reset")
 
+    # --- Search ---
     def search(self, query: str, top_k: int = 3) -> List[Dict]:
+        """
+        Search for most relevant documents given a query string.
+        Returns list of {"document": doc_dict, "score": similarity}
+        """
         if not query.strip() or len(self.doc_order) == 0:
             return []
 
@@ -165,4 +189,5 @@ class VectorDB:
             return []
 
 
-vector_db = VectorDB()
+# Singleton instance
+vector_db = VectorStore()

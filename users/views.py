@@ -1,3 +1,4 @@
+# users/views.py
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -13,7 +14,11 @@ from .tasks import schedule_signup_verification_email
 
 
 class UserRegistrationView(APIView):
-    """Endpoint for user registration"""
+    """
+    Endpoint for user registration.
+    Creates a new user, schedules a verification email,
+    and returns JWT tokens along with user data.
+    """
     permission_classes = [AllowAny]
 
     def post(self, request):
@@ -37,11 +42,17 @@ class UserRegistrationView(APIView):
                 status=status.HTTP_201_CREATED,
             )
 
-        return Response({"errors": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {"errors": serializer.errors},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
 
 
 class UserLoginView(APIView):
-    """Endpoint for user login with email or username"""
+    """
+    Endpoint for user login with email or username.
+    Returns JWT tokens and user data on success.
+    """
     permission_classes = [AllowAny]
 
     def post(self, request):
@@ -63,11 +74,17 @@ class UserLoginView(APIView):
                 status=status.HTTP_200_OK,
             )
 
-        return Response({"errors": serializer.errors}, status=status.HTTP_401_UNAUTHORIZED)
+        return Response(
+            {"errors": serializer.errors},
+            status=status.HTTP_401_UNAUTHORIZED,
+        )
 
 
 class UserProfileView(APIView):
-    """Endpoint to get the authenticated user's profile"""
+    """
+    Endpoint to get the authenticated user's profile.
+    Requires a valid JWT access token.
+    """
     permission_classes = [IsAuthenticated]
 
     def get(self, request):

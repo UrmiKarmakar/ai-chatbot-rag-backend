@@ -27,8 +27,8 @@ class ChatSession(models.Model):
         ]
 
     def __str__(self):
-        return f"{self.user.email} - {self.title or 'Untitled'} - {self.created_at:%Y-%m-%d %H:%M}"
-
+        user_identifier = getattr(self.user, "email", str(self.user))
+        return f"{user_identifier} - {self.title or 'Untitled'} - {self.created_at:%Y-%m-%d %H:%M}"
 
 class ChatMessage(models.Model):
     """
